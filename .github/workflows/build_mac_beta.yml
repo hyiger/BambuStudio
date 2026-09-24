@@ -1,0 +1,82 @@
+name: Build macOS beta
+
+# Builds a universal macOS app for a pushed "v*-mac-beta*" tag, packages it as a
+# DMG and attaches it to a draft pre-release for that tag, ready to review and
+# publish. Manual runs only upload the DMG as a workflow artifact.
+#
+# Reuses the macos-15 deps cache that "Build all" saves on master, so it fails
+# fast if deps/** differs from master and no matching cache exists yet.
+
+on:
+  push:
+    tags:
+      - 'v*-mac-beta*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build_mac:
+    name: Build macOS universal
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: 'true'
+
+      - name: Load cached deps
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ github.workspace }}/deps/build
+          key: macos-15-cache-bambustudio_deps-build-${{ hashFiles('deps/**') }}
+          fail-on-cache-miss: true
+
+      - name: Build slicer mac
+        run: |
+          brew install automake texinfo
+          brew unlink cmake || true
+          brew tap-new $USER/old-cmake
+          brew extract --version=3.31.0 cmake $USER/old-cmake
+          brew install $USER/old-cmake/cmake@3.31.0
+          brew link --overwrite cmake@3.31.0
+          brew pin cmake@3.31.0
+          ./BuildMac.sh -s -x -a universal -t 10.15 -1
+
+      - name: Package DMG
+        id: package
+        run: |
+          ver=$(grep 'set(SLIC3R_VERSION' version.inc | cut -d '"' -f2)
+          name="BambuStudio_Mac_universal_V${ver}_$(git rev-parse --short HEAD)"
+          .github/scripts/package_mac_dmg.sh build/universal/BambuStudio/BambuStudio.app "$name.dmg" "BambuStudio $ver"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}.dmg
+
+      - name: Create draft pre-release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.package.outputs.name }}
+          VER: ${{ steps.package.outputs.ver }}
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Unofficial macOS build of Bambu Studio ${VER} (beta) from ${GITHUB_REPOSITORY} at ${GITHUB_SHA}.
+
+          Universal app (Apple Silicon and Intel), macOS 10.15 or later.
+
+          This build is ad-hoc signed and not notarized. After dragging it to Applications, the
+          first launch is blocked: open System Settings > Privacy & Security and click "Open Anyway",
+          or run \`xattr -dr com.apple.quarantine /Applications/BambuStudio.app\`.
+          EOF
+          gh release create "$GITHUB_REF_NAME" "$NAME.dmg" \
+            --draft --prerelease --verify-tag \
+            --title "Bambu Studio ${VER} beta for macOS (${GITHUB_REF_NAME})" \
+            --notes-file "$RUNNER_TEMP/notes.md"
