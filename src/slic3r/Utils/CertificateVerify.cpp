@@ -286,9 +286,47 @@ namespace Slic3r {
         }
     }
 
+    bool IsSignedByTeam(const std::string& path_utf8, const std::string& team_id) {
+        if (team_id.empty())
+            return false;
+        CFURLRef url = CFURLCreateFromFileSystemRepresentation(nullptr, (const UInt8 *) path_utf8.c_str(), path_utf8.size(), false);
+        if (!url)
+            return false;
+        SecStaticCodeRef code = nullptr;
+        OSStatus         st   = SecStaticCodeCreateWithPath(url, kSecCSDefaultFlags, &code);
+        CFRelease(url);
+        if (st != errSecSuccess || !code)
+            return false;
+
+        // The standard form of a Developer ID designated requirement. Unlike
+        // SummarizeModule, this validates the signature itself, not just what it claims.
+        const std::string req_text = "anchor apple generic and certificate leaf[subject.OU] = \"" + team_id + "\"";
+        SecRequirementRef req      = nullptr;
+        if (CFStringRef req_str = CFStringCreateWithCString(nullptr, req_text.c_str(), kCFStringEncodingUTF8)) {
+            st = SecRequirementCreateWithString(req_str, kSecCSDefaultFlags, &req);
+            CFRelease(req_str);
+        } else {
+            st = errSecParam;
+        }
+        if (st == errSecSuccess && req)
+            st = SecStaticCodeCheckValidity(code, kSecCSDefaultFlags | kSecCSCheckAllArchitectures, req);
+        else if (st == errSecSuccess)
+            st = errSecParam;
+        if (req)
+            CFRelease(req);
+        CFRelease(code);
+        if (st != errSecSuccess)
+            BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ": " << path_utf8 << " not validly signed by team " << team_id << ", status " << st;
+        return st == errSecSuccess;
+    }
+
 #else
     std::optional<SignerSummary> SummarizeSelf() { return std::nullopt; }
     std::optional<SignerSummary> SummarizeModule(const std::string&) { return std::nullopt; }
+#endif
+
+#if !defined(__APPLE__)
+    bool IsSignedByTeam(const std::string&, const std::string&) { return false; }
 #endif
 
     bool IsSamePublisher(const SignerSummary& a, const SignerSummary& b)

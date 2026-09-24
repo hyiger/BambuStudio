@@ -19,6 +19,8 @@ using namespace BBL;
 namespace Slic3r {
 
 #define BAMBU_SOURCE_LIBRARY "BambuSource"
+// Apple team ID that signs the official macOS network plugin.
+#define BAMBU_NETWORK_PLUGIN_TEAM_ID "T3UBR9Y3B2"
 
 #if defined(_MSC_VER) || defined(_WIN32)
 static HMODULE networking_module = NULL;
@@ -259,6 +261,11 @@ int NetworkAgent::initialize_network_module(bool using_backup, bool validate_cer
         module_cert_summary = SummarizeModule(library);
         if (module_cert_summary) {
             if (IsSamePublisher(*self_cert_summary, *module_cert_summary))
+                networking_module = dlopen(library.c_str(), RTLD_LAZY);
+            // A build signed with another publisher's Developer ID (e.g. a community
+            // build) can never match the plugin's publisher, so also accept a plugin
+            // validly signed by Bambu Lab's own team.
+            else if (IsSignedByTeam(library, BAMBU_NETWORK_PLUGIN_TEAM_ID))
                 networking_module = dlopen(library.c_str(), RTLD_LAZY);
             else
                 BOOST_LOG_TRIVIAL(info) << "module is from another publisher:" << module_cert_summary->as_print();

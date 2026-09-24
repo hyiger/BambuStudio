@@ -34,4 +34,9 @@ namespace Slic3r {
     std::optional<SignerSummary> SummarizeSelf();
 
     std::optional<SignerSummary> SummarizeModule(const std::string& path_utf8);
+
+    // True if the module at path_utf8 has a valid code signature chaining to Apple
+    // whose leaf certificate was issued to the given Apple team ID. macOS only;
+    // always false elsewhere.
+    bool IsSignedByTeam(const std::string& path_utf8, const std::string& team_id);
 }
