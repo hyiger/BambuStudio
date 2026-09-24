@@ -10,6 +10,10 @@
 #   NOTARY_PROFILE  notarytool keychain profile (xcrun notarytool store-credentials).
 #                   When set, the app and the DMG are notarized and stapled.
 #                   Requires a Developer ID SIGN_IDENTITY.
+#   DMG_APP_NAME    bundle name inside the DMG, e.g. "BambuStudio Beta.app", so
+#                   dragging it to Applications does not replace an official
+#                   install. Defaults to the built bundle's name. Renaming the
+#                   bundle folder does not affect its signature.
 #
 # lipo-merged universal builds carry no valid bundle signature, and macOS reports
 # such a downloaded app as "damaged". An ad-hoc signature at least lets users open
@@ -72,7 +76,7 @@ fi
 
 staging="$work/dmg"
 mkdir -p "$staging"
-ditto "$app" "$staging/$(basename "$app")"
+ditto "$app" "$staging/${DMG_APP_NAME:-$(basename "$app")}"
 ln -s /Applications "$staging/Applications"
 
 rm -f "$dmg"

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Hardened-runtime entitlements for Developer ID builds; matches the official release.
-     disable-library-validation lets the app load the Bambu network plugin, which is
-     signed by a different team. -->
+     disable-library-validation lets the hardened runtime load the Bambu network plugin,
+     which is signed by a different team. The app's own publisher check must accept the
+     plugin too; see IsSignedByTeam in NetworkAgent::initialize_network_module. -->
 <plist version="1.0">
 <dict>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
