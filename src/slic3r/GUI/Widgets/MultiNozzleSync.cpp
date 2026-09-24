@@ -3,6 +3,7 @@
 #include "../Plater.hpp"
 #include "../DeviceCore/DevConfigUtil.h"
 #include "../DeviceCore/DevManager.h"
+#include "WebView.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/LocalesUtils.hpp"
 #include <wx/sizer.h>
@@ -515,7 +516,14 @@ void HotEndTable::OnPaint(wxPaintEvent& evt)
 NozzleListTable::NozzleListTable(wxWindow* parent) : wxPanel(parent,wxID_ANY,wxDefaultPosition,wxDefaultSize ,wxNO_BORDER)
 {
     m_web_view = wxWebView::New(this, wxID_ANY, wxEmptyString, wxDefaultPosition,wxDefaultSize,wxString::FromAscii(wxWebViewBackendDefault),wxNO_BORDER);
+#ifdef __WXOSX__
+    // Non-blocking on macOS: the synchronous overload can hang the UI while the new
+    // WebContent process launches (see WebView::CreateWebView). The page is loaded below,
+    // so the document-start user script still defines window.nozzleListTable for it.
+    m_web_view->AddScriptMessageHandler("nozzleListTable", /*runScriptSync=*/false);
+#else
     m_web_view->AddScriptMessageHandler("nozzleListTable");
+#endif
     m_web_view->EnableContextMenu(false);
     fs::path filepath = fs::path(resources_dir()) / "web/flush/NozzleListTable.html";
     wxFileName fn(wxString::FromUTF8(filepath.string()));
@@ -642,7 +650,14 @@ void NozzleListTable::SetOptions(const std::vector<NozzleOption>& options,int de
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "update table " << script1;
 
 #if 1
+#ifdef __WXOSX__
+    // Runs right after construction, before the page (and possibly its WebContent
+    // process) is up, so wxWebView::RunScript's blocking wait can hang the UI the same
+    // way AddScriptMessageHandler did. The page requests the table itself on "init".
+    WebView::RunScript(m_web_view, script1);
+#else
     m_web_view->RunScript(script1);
+#endif
 #else
     CallAfter([script1, this]() {
         m_web_view->RunScript(script1);

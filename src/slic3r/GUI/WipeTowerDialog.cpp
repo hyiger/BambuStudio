@@ -272,7 +272,14 @@ WipingDialog::WipingDialog(wxWindow* parent, const int max_flush_volume) :
         wxWebViewBackendDefault,
         wxNO_BORDER);
 
+#ifdef __WXOSX__
+    // Non-blocking on macOS: the synchronous overload can hang the UI while the new
+    // WebContent process launches (see WebView::CreateWebView). The page is loaded below,
+    // so the document-start user script still defines window.wipingDialog for it.
+    m_webview->AddScriptMessageHandler("wipingDialog", /*runScriptSync=*/false);
+#else
     m_webview->AddScriptMessageHandler("wipingDialog");
+#endif
     main_sizer->Add(m_webview, 1, wxEXPAND);
 
     fs::path filepath = fs::path(resources_dir()) / "web/flush/WipingDialog.html";

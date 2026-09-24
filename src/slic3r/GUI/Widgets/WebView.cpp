@@ -1051,7 +1051,18 @@ wxWebView *WebView::CreateWebView(wxWindow *parent, wxString const &url, wxStrin
     if (has_backend_attempt) {
         auto addScriptMessageHandler = [] (wxWebView *webView) {
             Slic3r::GUI::wxGetApp().set_adding_script_handler(true);
+#ifdef __WXOSX__
+            // The one-argument overload injects window.wx through RunScript(), whose
+            // RunScriptSync() spins wxYield() with no timeout until WebKit answers. On a
+            // freshly created view that answer depends on a new WebContent process finishing
+            // its launch handshake, which can stall indefinitely on macOS 26.5+, freezing
+            // the UI (seen from inside the print dialog's modal loop). Passing false keeps
+            // the same handler and document-start user script but injects into the current
+            // document with a non-blocking evaluateJavaScript.
+            if (!webView->AddScriptMessageHandler("wx", /*runScriptSync=*/false))
+#else
             if (!webView->AddScriptMessageHandler("wx"))
+#endif
                 log_webview(Slic3r::GUI::WebViewTraceLogger::Stage::L0_BACKEND, webView->GetName(),
                             "script_message_handler_failed", {},
                             Slic3r::GUI::WebViewTraceLogger::Severity::Warning);
@@ -1072,8 +1083,9 @@ wxWebView *WebView::CreateWebView(wxWindow *parent, wxString const &url, wxStrin
                 g_delay_webviews.push_back(webView);
             } else {
                 addScriptMessageHandler(webView);
-                // AddScriptMessageHandler pumps a nested event loop (RunScriptSync ->
-                // wxYieldFor). While the adding-flag is set, other webviews' deferred
+                // On GTK AddScriptMessageHandler pumps a nested event loop (RunScriptSync ->
+                // wxYieldFor); on macOS it no longer does, so this queue stays empty there.
+                // While the adding-flag is set, other webviews' deferred
                 // CallAfter lambdas dispatched by that nested loop take the guarded
                 // branch above and queue themselves here, so drain them now. Any webview
                 // torn down while queued (e.g. a language-switch GUI rebuild) is skipped:
